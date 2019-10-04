@@ -7,6 +7,7 @@ use std::ops::Rem;
 use log::Level;
 use log::debug;
 use std::fmt;
+use std::collections::VecDeque;
 
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -57,6 +58,7 @@ impl Point {
         Self::double_area(a, b, maybe_left) > std::f32::EPSILON
     }
 
+    // same as left
     pub fn left_on(a: &Point, b: &Point, maybe_left: &Point) -> bool {
         Self::double_area(a, b, maybe_left) >= -std::f32::EPSILON
     }
@@ -158,9 +160,41 @@ impl Polygon {
 
         table[0][1]
     }
+
+    pub fn melkmans_output(&self) -> String {
+        let (deque, left_tests) = self.melkmans();
+        let mut output = String::new();
+        for point in deque.iter() {
+            output = format!("{},{}", output, point);
+        }
+        if let Some(last_left_test) = left_tests.last() {
+            format!("{};{}", String::from(output.trim_start_matches(",")), last_left_test)
+        } else {
+            format!("{};None", String::from(output.trim_start_matches(",")))
+        }
+
+    }
 }
 
 impl Polygon {
+    fn nb_tri_helper(&self, i : usize, k: usize, table : &mut Vec<Vec<usize>>, calculated : &mut Vec<Vec<usize>>) -> usize {
+        if self.left_polygon(i, k).len() == 0 {
+            calculated[i][k] = 1;
+            table[i][k] = 1;
+        }
+        if calculated[i][k] == 1 {
+            return table[i][k];
+        }
+        for j in self.left_polygon(i, k) {
+            if (self.edge(i,j) || self.diagonal(i, j))
+                && (self.edge(j, k) || self.diagonal(j, k)) {
+                table[i][k] += self.nb_tri_helper(i, j, table, calculated) * self.nb_tri_helper(j, k, table, calculated);
+            }
+        }
+        calculated[i][k] = 1;
+        table[i][k]
+    }
+    
     pub fn new(points : Vec<Point>) -> Self {
         Self { points }
     }
@@ -235,21 +269,57 @@ impl Polygon {
         diff == 1 || diff == (self.points.len() - 1) as i32
     }
 
-    fn nb_tri_helper(&self, i : usize, k: usize, table : &mut Vec<Vec<usize>>, calculated : &mut Vec<Vec<usize>>) -> usize {
-        if self.left_polygon(i, k).len() == 0 {
-            calculated[i][k] = 1;
-            table[i][k] = 1;
+    pub fn melkmans(&self) -> (VecDeque<usize>, Vec<String>) {
+        if self.points.len() < 3 {
+            return (VecDeque::new(), vec![]);
         }
-        if calculated[i][k] == 1 {
-            return table[i][k];
-        }
-        for j in self.left_polygon(i, k) {
-            if (self.edge(i,j) || self.diagonal(i, j))
-                && (self.edge(j, k) || self.diagonal(j, k)) {
-                table[i][k] += self.nb_tri_helper(i, j, table, calculated) * self.nb_tri_helper(j, k, table, calculated);
+        let mut deque = if Point::left(&self.points[0], &self.points[1], &self.points[2]) {
+            VecDeque::from(vec![self.points[2], self.points[0], self.points[1], self.points[2]])
+        } else {
+            VecDeque::from(vec![self.points[2], self.points[1], self.points[0], self.points[2]])
+        };
+        // lazy copy paste fix later for printing
+        let mut deque_indices = if Point::left(&self.points[0], &self.points[1], &self.points[2]) {
+            VecDeque::from(vec![2, 0, 1, 2])
+        } else {
+            VecDeque::from(vec![2, 1, 0, 2])
+        };
+
+        let mut left_tests = vec![];
+        let mut i = 3;
+
+        //TODO remove unwraps
+        while i < self.points.len() {
+            while i < self.points.len() &&
+                Point::left(deque.front().unwrap(), deque.get(1).unwrap(), self.points.get(i).unwrap()) &&
+                Point::left(deque.get(deque.len() - 2).unwrap(), deque.back().unwrap(), self.points.get(i).unwrap()) {
+                i += 1;
             }
+            if i >= self.points.len() {
+                left_tests.push(format!("Left({},{},{}) = {}, Left({},{},{}) = {}",
+                                        deque_indices.front().unwrap(), deque_indices.get(1).unwrap(), i-1, Point::left(deque.front().unwrap(), deque.get(1).unwrap(), self.points.get(i-1).unwrap()),
+                                        deque_indices.get(deque.len() - 2).unwrap(), deque_indices.back().unwrap(), i-1, Point::left(deque.get(deque.len() - 2).unwrap(), deque.back().unwrap(), self.points.get(i-1).unwrap())));
+                break;
+            }
+            left_tests.push(format!("Left({},{},{}) = {}, Left({},{},{}) = {}",
+                                    deque_indices.front().unwrap(), deque_indices.get(1).unwrap(), i, Point::left(deque.front().unwrap(), deque.get(1).unwrap(), self.points.get(i).unwrap()),
+                                    deque_indices.get(deque.len() - 2).unwrap(), deque_indices.back().unwrap(), i, Point::left(deque.get(deque.len() - 2).unwrap(), deque.back().unwrap(), self.points.get(i).unwrap())));
+
+            while !Point::left(deque.front().unwrap(), deque.get(1).unwrap(), self.points.get(i).unwrap())  {
+                deque.pop_front();
+                deque_indices.pop_front();
+            }
+            deque.push_front(self.points[i]);
+            deque_indices.push_front(i);
+            while !Point::left(deque.get(deque.len() - 2).unwrap(), deque.back().unwrap(), self.points.get(i).unwrap())  {
+                deque.pop_back();
+                deque_indices.pop_back();
+            }
+            deque.push_back(self.points[i]);
+            deque_indices.push_back(i);
+
+            i += 1;
         }
-        calculated[i][k] = 1;
-        table[i][k]
+        return (deque_indices, left_tests);
     }
 }
