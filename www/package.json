@@ -29,7 +29,7 @@
   "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
   "devDependencies": {
     "copy-webpack-plugin": "^5.0.0",
-    "d3": "^5.12.0",
+    "d3": "^7.6.1",
     "gh-pages": "^2.1.1",
     "triangulation": "file:../pkg",
     "webpack": "^4.29.3",
